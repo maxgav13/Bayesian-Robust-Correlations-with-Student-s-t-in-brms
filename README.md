@@ -12,14 +12,12 @@ What's the deal?
 
 Pearson's correlations are designed to quantify the linear relationship between two normally distributed variables. The normal distribution and its multivariate generalization, the multivariate normal distribution, are sensitive to outliers. When you have well-behaved synthetic data, this isn't an issue. But if you work with wild and rough real-world data, this is a problem. One can have data for which the vast majority of cases are well-characterized by a nice liner relationship, but have a few odd cases for which that relationship does not hold. And if those odd cases happen to be overly influential--sometimes called leverage points--the resulting Pearson's correlation coefficient might look off.
 
-The normal distribution is a special case of Student's *t*-distribution with the *ν* parameter (i.e., *n**u*, degree of freedom) set to infinity. However, when *ν* is small, Student's *t*-distribution is more robust to multivariate outliers. I'm not going to covery why in any detail. For that you've got [Baez-Ortega's blog](https://baezortega.github.io/2018/05/28/robust-correlation/), an even earlier blog from [Rasmus Bååth](http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/), and textbook treatments on the topic by [Gelman & Hill (2007, chapter 6)](http://www.stat.columbia.edu/~gelman/arm/) and [Kruschke (2014, chapter 16)](https://sites.google.com/site/doingbayesiandataanalysis/).
-
-Here we'll get a quick sense of how vulnerable Pearson's correlations--with their reliance on the Gaussian--are to outliers, we'll demonstrate how fitting correlations within the Bayesian paradigm using the conventional Gaussian likelihood is similarly vulnerable to distortion, and then demonstrate how Student's *t*-distribution can save the day. And importantly, we'll do almost all of this with brms.
+The normal distribution is a special case of Student's *t*-distribution with the *ν* parameter (i.e., *nu*, degree of freedom) set to infinity. However, when *ν* is small, Student's *t*-distribution is more robust to multivariate outliers. I'm not going to cover why in any detail. For that you've got [Baez-Ortega's blog](https://baezortega.github.io/2018/05/28/robust-correlation/), an even earlier blog from [Rasmus Bååth](http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/), and textbook treatments on the topic by [Gelman & Hill (2007, chapter 6)](http://www.stat.columbia.edu/~gelman/arm/) and [Kruschke (2014, chapter 16)](https://sites.google.com/site/doingbayesiandataanalysis/). Here we'll get a quick sense of how vulnerable Pearson's correlations--with their reliance on the Gaussian--are to outliers, we'll demonstrate how fitting correlations within the Bayesian paradigm using the conventional Gaussian likelihood is similarly vulnerable to distortion, and then demonstrate how Student's *t*-distribution can save the day. And importantly, we'll do the bulk of this with the brms package.
 
 We need data
 ------------
 
-To start off, we'll make a multivariate normal simulated data set using the same steps Baez-Ortega's used
+To start off, we'll make a multivariate normal simulated data set using the same steps Baez-Ortega's used.
 
 ``` r
 library(mvtnorm)
@@ -138,7 +136,7 @@ library(brms)
 
 I’m not going to spend a lot of time walking through the syntax in the main brms function, `brm()`. You can learn all about that [here](https://github.com/paul-buerkner/brms). But our particular use of `brm()` requires a few fine points.
 
-One doesn’t always think about bivariate correlations within the regression paradigm. But they work just fine. Within brms, you use the conventional Gaussian likelihood (i.e., `family = gaussian`), use the `cbind()` syntax to set up a [multivariate model](https://cran.r-project.org/web/packages/brms/vignettes/brms_multivariate.html), and fit an intercept-only model. For each variable specified in `cbind()`, you’ll estimate an intercept (i.e., mean, *μ*) and sigma (i.e., *σ*, often called a residual variance). Since there are no predictors in the model, the residual variance is just the variance and the brms default for such models is to allow the residual variances to covary. But since variances are parameterized in the standard deviation metric, the residual variances and their covariance are *SD*s and their correlation.
+One doesn’t always think about bivariate correlations within the regression paradigm. But they work just fine. Within brms, you use the conventional Gaussian likelihood (i.e., `family = gaussian`), use the `cbind()` syntax to set up a [multivariate model](https://cran.r-project.org/web/packages/brms/vignettes/brms_multivariate.html), and fit an intercept-only model. For each variable specified in `cbind()`, you’ll estimate an intercept (i.e., mean, *μ*) and sigma (i.e., *σ*, often called a residual variance). Since there are no predictors in the model, the residual variance is just the variance and the brms default for such models is to allow the residual variances to covary. But since variances are parameterized in the standard deviation metric in brms, the residual variances and their covariance are *SD*s and their correlation, respectively.
 
 Here’s what it looks like in practice.
 
@@ -153,7 +151,7 @@ f0 <-
        iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
 ```
 
-In a typical Bayesian workflow, you’d examine the quality of the chains with trace plots. The easy way to do that in brms is with `plot()`. E.g., to get the trace plots for our first model, you’d code `plot(f0)`. For all models in this project, the trace plots looked fine. For the sake of space, I’ll leave their examination as an exercise for the interested reader.
+In a typical Bayesian workflow, you’d examine the quality of the chains with trace plots. The easy way to do that in brms is with `plot()`. E.g., to get the trace plots for our first model, you’d code `plot(f0)`. The trace plots look fine for all models in this project. For the sake of space, I’ll leave their inspection as an exercise for the interested reader.
 
 Our priors and such mirror those in Baez-Ortega's blog. Here are the results.
 
@@ -185,7 +183,7 @@ print(f0)
     ## is a crude measure of effective sample size, and Rhat is the potential 
     ## scale reduction factor on split chains (at convergence, Rhat = 1).
 
-There way down in the last line in the 'Family Specific Parameters' section we have `rescor(x,y)`, which is our correlation. And indeed, our Gaussian intercept-only multivariate model did a great job recovering the correlation we used to simulate the `x.clean` data with. Look at what happened when we try this approach with `x.noisy`.
+Way down there in the last line in the 'Family Specific Parameters' section we have `rescor(x,y)`, which is our correlation. And indeed, our Gaussian intercept-only multivariate model did a great job recovering the correlation we used to simulate the `x.clean` data with. Look at what happened when we try this approach with `x.noisy`.
 
 ``` r
 f1 <-
@@ -226,11 +224,11 @@ print(f1)
     ## is a crude measure of effective sample size, and Rhat is the potential 
     ## scale reduction factor on split chains (at convergence, Rhat = 1).
 
-As it turns out, `data = x.noisy`, + `family = gaussian` in `brm()` failed us just like Pearson's correlation failed us. Time to leave failure behind.
+As it turns out, `data = x.noisy` + `family = gaussian` in `brm()` failed us just like Pearson's correlation failed us. Time to leave failure behind.
 
-### Second with Student's *t*.
+### Now with Student's *t*.
 
-Before we jump into using `family = student`, we should talk a bit about *ν*. This is our new parameter which is set to infinity when using the Gaussian likelihood. *ν* is bound at zero but, as discussed in Baez-Ortega's blog, is nonsensical when below 1. As it turns out, *ν* is constrained to equal or greater than 1 in brms. The [Stan team currently recommends the gamma(2, 0.1) prior for *ν*](https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations), which is also the current brms default. This is what that looks like:
+Before we jump into using `family = student`, we should talk a bit about *ν*. This is our new parameter which is silently fixed to infinity when we use the Gaussian likelihood. *ν* is bound at zero but, as discussed in Baez-Ortega's blog, is somewhat nonsensical for values below 1. As it turns out, *ν* is constrained to be equal tp or greater than 1 in brms. The [Stan team currently recommends the gamma(2, 0.1) prior for *ν*](https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations), which is also the current brms default. This is what that prior looks like:
 
 ``` r
 ggplot(data = tibble(x = seq(from = 0, to = 120, by = .5)),
@@ -247,7 +245,7 @@ ggplot(data = tibble(x = seq(from = 0, to = 120, by = .5)),
 
 ![](README_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
-So gamma(2, 0.1) gently pushed the *ν* posterior toward low values, but it’s gently-sloping right tail allows for higher values to emerge.
+So gamma(2, 0.1) should gently push the *ν* posterior toward low values, but it’s slowly-sloping right tail will allow higher values to emerge.
 
 Following the Stan team's recommendation, the brms default and Baez-Ortega's blog, here's our robust Student's *t* model for the `x.noisy` data.
 
@@ -337,7 +335,7 @@ print(f3)
     ## is a crude measure of effective sample size, and Rhat is the potential 
     ## scale reduction factor on split chains (at convergence, Rhat = 1).
 
-So when you don't need Student's *t*, it still gets the right answer anyways. That's a nice feature.
+So when you don't need Student's *t*, it yields the right answer anyways. That's a nice feature.
 
 We should probably compare the posteriors of the correlations across the four models. First we’ll need to put the posterior samples into data frames.
 
@@ -348,7 +346,7 @@ post2 <- posterior_samples(f2)
 post3 <- posterior_samples(f3)
 ```
 
-Now that’s done, all we need to do is combine the data frames, do a little wrangling, and plot the correlation posteriors.
+Now that’s done, all we need to do is combine the data frames, do a little wrangling, and show the correlation posteriors in a coefficient plot.
 
 ``` r
 posts <-
@@ -380,14 +378,14 @@ posts %>%
 
 ![](README_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
-The dots are the posterior medians, the thick inner lines the 50% intervals, and the thnner outer lines the 95% intervals. The posteriors for the `x.noisy` data are in red and those for the `x.clean` data are in blue. So if the data are clean multivariate normal Gaussian or if they’re dirty but fit with robust Student’s t, everything is pretty much alright. But whoa, if you fit a correlation with a combination of `family = gaussian` and noisy outlier-laden data, man is that just a mess.
+The dots are the posterior medians, the thick inner lines the 50% intervals, and the thinner outer lines the 95% intervals. The posteriors for the `x.noisy` data are in red and those for the `x.clean` data are in blue. So if the data are clean multivariate normal Gaussian or if they’re dirty but fit with robust Student’s t, everything is pretty much alright. But whoa, if you fit a correlation with a combination of `family = gaussian` and noisy outlier-laden data, man is that just a mess.
 
 Don’t make a mess of your data. Use robust Student’s *t*.
 
 Information criteria can help us, too
 -------------------------------------
 
-In a Bayesian workflow, one often compares competing models with information criteria. Within the Stan/brms world, the rising star among the information criteria has been the [LOO](https://github.com/stan-dev/loo). Though we’re not going to use the LOO to compare models in the typical way, here, we can use make use of it for one of its side effects.
+In a Bayesian workflow, one often compares competing models with information criteria. Within the Stan/brms world, the rising star among the information criteria has been the [LOO](https://github.com/stan-dev/loo). Though we’re not going to use the LOO to compare models in the typical way, here, we can use make use of one of its side effects.
 
 In brms, you can get a model’s LOO with the `loo()` function and, as with other operations in R, you can save that output as a named object. Here we’ll compute the LOO for each of our four models.
 
@@ -398,7 +396,7 @@ l_f2 <- loo(f2)
 l_f3 <- loo(f3)
 ```
 
-To get typical `loo()` summary output, you’d just call one of the objects like so.
+To get typical `loo()` summary output, you just call one of the objects like so.
 
 ``` r
 l_f0
@@ -424,7 +422,7 @@ l_f0
     ## All Pareto k estimates are ok (k < 0.7).
     ## See help('pareto-k-diagnostic') for details.
 
-For a lot of projects, the main event is the summary info at the top. For our purposes, focus on the bottom half, the ‘Pareto k diagnostic values’. Each case in the data gets its own *k* value and those *k* values can be used to examine overly-influential cases in a given model. See, for example [this discussion on stackoverflow.com](https://stackoverflow.com/questions/39578834/linear-model-diagnostics-for-bayesian-models-using-rstan/39595436) in which several members of the [Stan team](http://mc-stan.org) weighed in. The issue is also discussed in [this paper](https://arxiv.org/abs/1507.04544), in the [loo reference manual](https://cran.r-project.org/web/packages/loo/loo.pdf), and in [this presentation by Aki Vehtari](https://www.youtube.com/watch?v=FUROJM3u5HQ&feature=youtu.be&a=). The 'Pareto k' table in the `loo()` summary output give us a quick sense of how many cases have *k* values in problematic ranges, conveniently labeled “bad” and “very bad.” In the case of our `x.clean` data modeled with the conventional Gaussian likelihood (i.e., `family = gaussian`), everything’s alright. Here’s what happens when we look at the summary for `f1`, the model from when we fit the `x.noisy` data with Gauss.
+For a lot of projects, the main event is the summary info at the top. We'll focus on the bottom half, the ‘Pareto k diagnostic values’. Each case in the data gets its own *k* value and those *k* values can be used to examine overly-influential cases in a given model. See, for example [this discussion on stackoverflow.com](https://stackoverflow.com/questions/39578834/linear-model-diagnostics-for-bayesian-models-using-rstan/39595436) in which several members of the [Stan team](http://mc-stan.org) weighed in. The issue is also discussed in [this paper](https://arxiv.org/abs/1507.04544), in the [loo reference manual](https://cran.r-project.org/web/packages/loo/loo.pdf), and in [this presentation by Aki Vehtari](https://www.youtube.com/watch?v=FUROJM3u5HQ&feature=youtu.be&a=). The 'Pareto k' table in the `loo()` summary output give us a quick sense of how many cases have *k* values in problematic ranges, conveniently labeled “bad” and “very bad.” In the case of our `x.clean` data modeled with the conventional Gaussian likelihood (i.e., `family = gaussian`), everything’s alright. Here’s what happens when we look at the summary for `f1`, the model from when we fit the `x.noisy` data with Gauss.
 
 ``` r
 l_f1

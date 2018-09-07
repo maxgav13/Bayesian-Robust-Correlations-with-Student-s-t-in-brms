@@ -10,7 +10,7 @@ For this project, I’m presuming you are vaguely familiar with linear regressio
 What's the deal?
 ----------------
 
-Pearson's correlations are designed to quantify the linear relationship between two normally distributed variables. The normal distribution and its multivariate generalization, the multivariate normal distribution, are sensitive to outliers. When you have well-behaved synthetic data, this isn't an issue. But if you work with wild and rough real-world data, this is a problem. One can have data for which the vast majority of cases are well-characterized by a nice liner relationship, but have a few odd cases for which that relationship does not hold. And if those odd cases happen to be overly influential--sometimes called leverage points--the resulting Pearson's correlation coefficient might look off.
+Pearson's correlations are designed to quantify the linear relationship between two normally distributed variables. The normal distribution and its multivariate generalization, the multivariate normal distribution, are sensitive to outliers. When you have well-behaved synthetic data, this isn't an issue. But if you work with wild and rough real-world data, this can be a problem. One can have data for which the vast majority of cases are well-characterized by a nice liner relationship, but have a few odd cases for which that relationship does not hold. And if those odd cases happen to be overly influential--sometimes called leverage points--the resulting Pearson's correlation coefficient might look off.
 
 The normal distribution is a special case of Student's *t*-distribution with the *ν* parameter (i.e., *nu*, degree of freedom) set to infinity. However, when *ν* is small, Student's *t*-distribution is more robust to multivariate outliers. I'm not going to cover why in any detail. For that you've got [Baez-Ortega's blog](https://baezortega.github.io/2018/05/28/robust-correlation/), an even earlier blog from [Rasmus Bååth](http://www.sumsar.net/blog/2013/08/bayesian-estimation-of-correlation/), and textbook treatments on the topic by [Gelman & Hill (2007, chapter 6)](http://www.stat.columbia.edu/~gelman/arm/) and [Kruschke (2014, chapter 16)](https://sites.google.com/site/doingbayesiandataanalysis/). Here we'll get a quick sense of how vulnerable Pearson's correlations--with their reliance on the Gaussian--are to outliers, we'll demonstrate how fitting correlations within the Bayesian paradigm using the conventional Gaussian likelihood is similarly vulnerable to distortion, and then demonstrate how Student's *t*-distribution can save the day. And importantly, we'll do the bulk of this with the brms package.
 
@@ -134,7 +134,7 @@ library(brms)
 
 ### First with the Gaussian likelihood.
 
-I’m not going to spend a lot of time walking through the syntax in the main brms function, `brm()`. You can learn all about that [here](https://github.com/paul-buerkner/brms). But our particular use of `brm()` requires a few fine points.
+I’m not going to spend a lot of time walking through the syntax in the main brms function, `brm()`. You can learn all about that [here](https://github.com/paul-buerkner/brms) or with my project [*Statistical Rethinking with brms, ggplot2, and the tidyverse*](https://github.com/ASKurz/Statistical_Rethinking_with_brms_ggplot2_and_the_tidyverse#statistical-rethinking-with-brms-ggplot2-and-the-tidyverse). But our particular use of `brm()` requires a few fine points.
 
 One doesn’t always think about bivariate correlations within the regression paradigm. But they work just fine. Within brms, you use the conventional Gaussian likelihood (i.e., `family = gaussian`), use the `cbind()` syntax to set up a [multivariate model](https://cran.r-project.org/web/packages/brms/vignettes/brms_multivariate.html), and fit an intercept-only model. For each variable specified in `cbind()`, you’ll estimate an intercept (i.e., mean, *μ*) and sigma (i.e., *σ*, often called a residual variance). Since there are no predictors in the model, the residual variance is just the variance and the brms default for such models is to allow the residual variances to covary. But since variances are parameterized in the standard deviation metric in brms, the residual variances and their covariance are *SD*s and their correlation, respectively.
 
@@ -144,10 +144,10 @@ Here’s what it looks like in practice.
 f0 <- 
   brm(data = x.clean, family = gaussian,
       cbind(x, y) ~ 1,
-      prior = c(set_prior("normal(0, 100)", class = "Intercept"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "x"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "y"),
-                set_prior("lkj(1)", class = "rescor")),
+      prior = c(prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 100), class = sigma, resp = x),
+                prior(normal(0, 100), class = sigma, resp = y),
+                prior(lkj(1), class = rescor)),
        iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
 ```
 
@@ -174,9 +174,12 @@ print(f0)
     ## y_Intercept     3.25      6.82   -10.32    16.48       2492 1.00
     ## 
     ## Family Specific Parameters: 
+    ##         Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+    ## sigma_x    21.52      2.55    17.24    27.35       2086 1.00
+    ## sigma_y    43.06      5.08    34.49    54.77       2087 1.00
+    ## 
+    ## Residual Correlations: 
     ##             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-    ## sigma_x        21.52      2.55    17.24    27.35       2086 1.00
-    ## sigma_y        43.06      5.08    34.49    54.77       2087 1.00
     ## rescor(x,y)    -0.95      0.02    -0.98    -0.92       2489 1.00
     ## 
     ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
@@ -187,13 +190,9 @@ Way down there in the last line in the 'Family Specific Parameters' section we h
 
 ``` r
 f1 <-
-  brm(data = x.noisy, family = gaussian,
-      cbind(x, y) ~ 1,
-      prior = c(set_prior("normal(0, 100)", class = "Intercept"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "x"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "y"),
-                set_prior("lkj(1)", class = "rescor")),
-       iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
+  update(f0,
+         newdata = x.noisy,
+         iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
 ```
 
 ``` r
@@ -215,20 +214,23 @@ print(f1)
     ## y_Intercept     6.60      7.44    -8.49    21.23       4338 1.00
     ## 
     ## Family Specific Parameters: 
+    ##         Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+    ## sigma_x    23.63      2.81    18.96    29.89       4256 1.00
+    ## sigma_y    47.20      5.49    37.76    59.37       4506 1.00
+    ## 
+    ## Residual Correlations: 
     ##             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-    ## sigma_x        23.63      2.81    18.96    29.89       4256 1.00
-    ## sigma_y        47.20      5.49    37.76    59.37       4506 1.00
     ## rescor(x,y)    -0.61      0.11    -0.78    -0.37       4369 1.00
     ## 
     ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
     ## is a crude measure of effective sample size, and Rhat is the potential 
     ## scale reduction factor on split chains (at convergence, Rhat = 1).
 
-As it turns out, `data = x.noisy` + `family = gaussian` in `brm()` failed us just like Pearson's correlation failed us. Time to leave failure behind.
+And the correlation estimate is -.6. As it turns out, `data = x.noisy` + `family = gaussian` in `brm()` failed us just like Pearson's correlation failed us. Time to leave failure behind.
 
 ### Now with Student's *t*.
 
-Before we jump into using `family = student`, we should talk a bit about *ν*. This is our new parameter which is silently fixed to infinity when we use the Gaussian likelihood. *ν* is bound at zero but, as discussed in Baez-Ortega's blog, is somewhat nonsensical for values below 1. As it turns out, *ν* is constrained to be equal tp or greater than 1 in brms. The [Stan team currently recommends the gamma(2, 0.1) prior for *ν*](https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations), which is also the current brms default. This is what that prior looks like:
+Before we jump into using `family = student`, we should talk a bit about *ν*. This is our new parameter which is silently fixed to infinity when we use the Gaussian likelihood. *ν* is bound at zero but, as discussed in Baez-Ortega's blog, is somewhat nonsensical for values below 1. As it turns out, *ν* is constrained to be equal to or greater than 1 in brms. The [Stan team currently recommends the gamma(2, 0.1) prior for *ν*](https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations), which is also the current brms default. This is what that prior looks like:
 
 ``` r
 ggplot(data = tibble(x = seq(from = 0, to = 120, by = .5)),
@@ -253,11 +255,11 @@ Following the Stan team's recommendation, the brms default and Baez-Ortega's blo
 f2 <- 
   brm(data = x.noisy, family = student,
       cbind(x, y) ~ 1,
-      prior = c(set_prior("gamma(2, .1)", class = "nu"),
-                set_prior("normal(0, 100)", class = "Intercept"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "x"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "y"),
-                set_prior("lkj(1)", class = "rescor")),
+      prior = c(prior(gamma(2, .1), class = nu),
+                prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 100), class = sigma, resp = x),
+                prior(normal(0, 100), class = sigma, resp = y),
+                prior(lkj(1), class = rescor)),
        iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
 ```
 
@@ -280,30 +282,28 @@ print(f2)
     ## y_Intercept     2.17      7.12   -11.48    16.59       3032 1.00
     ## 
     ## Family Specific Parameters: 
+    ##         Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+    ## sigma_x    18.29      2.89    13.16    24.52       3154 1.00
+    ## sigma_y    36.42      5.77    26.07    48.70       3216 1.00
+    ## nu          2.64      0.97     1.36     5.00       3756 1.00
+    ## 
+    ## Residual Correlations: 
     ##             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-    ## sigma_x        18.29      2.89    13.16    24.52       3154 1.00
-    ## sigma_y        36.42      5.77    26.07    48.70       3216 1.00
-    ## nu              2.64      0.97     1.36     5.00       3756 1.00
     ## rescor(x,y)    -0.93      0.03    -0.97    -0.85       3680 1.00
     ## 
     ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
     ## is a crude measure of effective sample size, and Rhat is the potential 
     ## scale reduction factor on split chains (at convergence, Rhat = 1).
 
-Whoa, look at that correlation, `rescore(x,y)`! It’s right about what we’d hope for. Sure, it's not a perfect -0.95, but that's way way way better than -0.61.
+Whoa, look at that correlation, `rescore(x,y)`! It’s right about what we’d hope for. Sure, it's not a perfect -.95, but that's way way way better than -0.61.
 
 While we’re at it, we may as well see what happens when we fit a Student’s *t* model when we have perfectly multivariate normal data. Here it is with the `x.clean` data.
 
 ``` r
 f3 <- 
-  brm(data = x.clean, family = student,
-      cbind(x, y) ~ 1,
-      prior = c(set_prior("gamma(2, .1)", class = "nu"),
-                set_prior("normal(0, 100)", class = "Intercept"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "x"),
-                set_prior("normal(0, 100)", class = "sigma", resp = "y"),
-                set_prior("lkj(1)", class = "rescor")),
-       iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
+  update(f2,
+         newdata = x.clean, 
+         iter = 2000, warmup = 500, chains = 4, cores = 4, seed = 210191)
 ```
 
 ``` r
@@ -325,10 +325,13 @@ print(f3)
     ## y_Intercept     2.67      7.04   -11.00    16.62       3090 1.00
     ## 
     ## Family Specific Parameters: 
+    ##         Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+    ## sigma_x    20.75      2.63    16.26    26.49       2275 1.00
+    ## sigma_y    41.30      5.25    32.34    52.89       2605 1.00
+    ## nu         21.97     13.60     5.28    56.33       4315 1.00
+    ## 
+    ## Residual Correlations: 
     ##             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-    ## sigma_x        20.75      2.63    16.26    26.49       2275 1.00
-    ## sigma_y        41.30      5.25    32.34    52.89       2605 1.00
-    ## nu             21.97     13.60     5.28    56.33       4315 1.00
     ## rescor(x,y)    -0.96      0.02    -0.98    -0.92       3328 1.00
     ## 
     ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
@@ -351,9 +354,9 @@ Now that’s done, all we need to do is combine the data frames, do a little wra
 ``` r
 posts <-
   post0 %>% select(rescor__x__y) %>% 
-  bind_rows(post1 %>% select(rescor__x__y)) %>% 
-  bind_rows(post2 %>% select(rescor__x__y)) %>% 
-  bind_rows(post3 %>% select(rescor__x__y)) %>% 
+  bind_rows(post1 %>% select(rescor__x__y),
+            post2 %>% select(rescor__x__y),
+            post3 %>% select(rescor__x__y)) %>% 
   mutate(key = rep(c("Gaussian likelihood with clean data", "Gaussian likelihood with noisy data", "Student likelihood with noisy data", "Student likelihood with clean data"), each = 6000),
          Clean = rep(c(0, 1, 1, 0), each = 6000) %>% as.character()) 
 
@@ -372,13 +375,13 @@ posts %>%
   scale_color_fivethirtyeight() +
   coord_flip(ylim = c(-1, -.25)) +
   theme_fivethirtyeight() +
-  theme(axis.text.y = element_text(hjust = 0),
+  theme(axis.text.y     = element_text(hjust = 0),
         legend.position = "none")
 ```
 
 ![](README_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
-The dots are the posterior medians, the thick inner lines the 50% intervals, and the thinner outer lines the 95% intervals. The posteriors for the `x.noisy` data are in red and those for the `x.clean` data are in blue. So if the data are clean multivariate normal Gaussian or if they’re dirty but fit with robust Student’s t, everything is pretty much alright. But whoa, if you fit a correlation with a combination of `family = gaussian` and noisy outlier-laden data, man is that just a mess.
+The dots are the posterior medians, the thick inner lines the 50% intervals, and the thinner outer lines the 95% intervals. The posteriors for the `x.noisy` data are in red and those for the `x.clean` data are in blue. So if the data are clean multivariate normal Gaussian or if they’re dirty but fit with robust Student’s *t*, everything is pretty much alright. But whoa, if you fit a correlation with a combination of `family = gaussian` and noisy outlier-laden data, man is that just a mess.
 
 Don’t make a mess of your data. Use robust Student’s *t*.
 
@@ -422,7 +425,7 @@ l_f0
     ## All Pareto k estimates are ok (k < 0.7).
     ## See help('pareto-k-diagnostic') for details.
 
-For a lot of projects, the main event is the summary info at the top. We'll focus on the bottom half, the ‘Pareto k diagnostic values’. Each case in the data gets its own *k* value and those *k* values can be used to examine overly-influential cases in a given model. See, for example [this discussion on stackoverflow.com](https://stackoverflow.com/questions/39578834/linear-model-diagnostics-for-bayesian-models-using-rstan/39595436) in which several members of the [Stan team](http://mc-stan.org) weighed in. The issue is also discussed in [this paper](https://arxiv.org/abs/1507.04544), in the [loo reference manual](https://cran.r-project.org/web/packages/loo/loo.pdf), and in [this presentation by Aki Vehtari](https://www.youtube.com/watch?v=FUROJM3u5HQ&feature=youtu.be&a=). The 'Pareto k' table in the `loo()` summary output give us a quick sense of how many cases have *k* values in problematic ranges, conveniently labeled “bad” and “very bad.” In the case of our `x.clean` data modeled with the conventional Gaussian likelihood (i.e., `family = gaussian`), everything’s alright. Here’s what happens when we look at the summary for `f1`, the model from when we fit the `x.noisy` data with Gauss.
+For a lot of projects, the main event is the summary info at the top. We'll focus on the bottom half, the ‘Pareto k diagnostic values’. Each case in the data gets its own *k* value and those *k* values can be used to examine overly-influential cases in a given model. See, for example [this discussion on stackoverflow.com](https://stackoverflow.com/questions/39578834/linear-model-diagnostics-for-bayesian-models-using-rstan/39595436) in which several members of the [Stan team](http://mc-stan.org) weighed in. The issue is also discussed in [this paper](https://arxiv.org/abs/1507.04544), in the [loo reference manual](https://cran.r-project.org/web/packages/loo/loo.pdf), and in [this presentation by Aki Vehtari](https://www.youtube.com/watch?v=FUROJM3u5HQ&feature=youtu.be&a=). The 'Pareto k' table in the `loo()` summary output give us a quick sense of how many cases have *k* values in problematic ranges, conveniently labeled "bad" and "very bad." In the case of our `x.clean` data modeled with the conventional Gaussian likelihood (i.e., `family = gaussian`), everything’s alright. Here’s what happens when we look at the summary for `f1`, the model from when we fit the `x.noisy` data with Gauss.
 
 ``` r
 l_f1
@@ -446,7 +449,7 @@ l_f1
     ##    (1, Inf)   (very bad)  0     0.0%   <NA>      
     ## See help('pareto-k-diagnostic') for details.
 
-`family = gaussian` + data with influential outliers = “bad” *k* values. If you want to extract the *k* values for each case, you code something like this.
+`family = gaussian` + data with influential outliers = "bad" *k* values. If you want to extract the *k* values for each case, you code something like this.
 
 ``` r
 l_f1$diagnostics$pareto_k
@@ -469,8 +472,8 @@ tibble(k = c(l_f0$diagnostics$pareto_k,
              l_f2$diagnostics$pareto_k,
              l_f3$diagnostics$pareto_k),
        likelihood = rep(c("Gaussian likelihood", "Student's t likelihood"), each = 80),
-       data = rep(c("clean data", "noisy data", "noisy data", "clean data"), each = 40),
-       case = rep(1:40, times = 4)) %>% 
+       data       = rep(c("clean data", "noisy data", "noisy data", "clean data"), each = 40),
+       case       = rep(1:40, times = 4)) %>% 
   mutate(bad_or_verybad = ifelse(k < .7, 0, 1) %>% as.character()) %>% 
   
   ggplot(aes(x = case, y = k, color = bad_or_verybad)) +
@@ -479,7 +482,7 @@ tibble(k = c(l_f0$diagnostics$pareto_k,
   scale_color_fivethirtyeight() +
   coord_cartesian(ylim = c(-.1, 1)) +
   theme_fivethirtyeight() +
-  theme(axis.text.y = element_text(hjust = 0),
+  theme(axis.text.y     = element_text(hjust = 0),
         legend.position = "none") +
   facet_grid(data~likelihood)
 ```
@@ -490,13 +493,58 @@ On the y-axis we have our *k* values and on the x-axis we have our cases, rows 1
 
 If you prefer models that are tough enough to handle your oddball data, consider Student’s *t*.
 
-Note. The analyses in this document were done with:
+``` r
+sessionInfo()
+```
 
--   R 3.4.4
--   RStudio 1.1.442
--   rmarkdown 1.9
--   mvtnorm 1.0-7
--   tidyverse 1.2.1
--   ggthemes 3.5.0
--   brms 2.3.1
--   rstan 2.17.3
+    ## R version 3.5.1 (2018-07-02)
+    ## Platform: x86_64-apple-darwin15.6.0 (64-bit)
+    ## Running under: macOS High Sierra 10.13.6
+    ## 
+    ## Matrix products: default
+    ## BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+    ## LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+    ## 
+    ## locale:
+    ## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+    ## 
+    ## attached base packages:
+    ## [1] stats     graphics  grDevices utils     datasets  methods   base     
+    ## 
+    ## other attached packages:
+    ##  [1] brms_2.4.0      Rcpp_0.12.18    ggthemes_3.5.0  bindrcpp_0.2.2 
+    ##  [5] forcats_0.3.0   stringr_1.3.1   dplyr_0.7.6     purrr_0.2.5    
+    ##  [9] readr_1.1.1     tidyr_0.8.1     tibble_1.4.2    ggplot2_3.0.0  
+    ## [13] tidyverse_1.2.1 mvtnorm_1.0-8  
+    ## 
+    ## loaded via a namespace (and not attached):
+    ##  [1] nlme_3.1-137         matrixStats_0.54.0   xts_0.10-2          
+    ##  [4] lubridate_1.7.4      threejs_0.3.1        httr_1.3.1          
+    ##  [7] rprojroot_1.3-2      rstan_2.17.3         tools_3.5.1         
+    ## [10] backports_1.1.2      R6_2.2.2             DT_0.4              
+    ## [13] lazyeval_0.2.1       colorspace_1.3-2     withr_2.1.2         
+    ## [16] tidyselect_0.2.4     gridExtra_2.3        mnormt_1.5-5        
+    ## [19] Brobdingnag_1.2-5    compiler_3.5.1       cli_1.0.0           
+    ## [22] rvest_0.3.2          shinyjs_1.0          xml2_1.2.0          
+    ## [25] labeling_0.3         colourpicker_1.0     scales_0.5.0        
+    ## [28] dygraphs_1.1.1.5     psych_1.8.4          ggridges_0.5.0      
+    ## [31] digest_0.6.15        StanHeaders_2.17.2   foreign_0.8-70      
+    ## [34] rmarkdown_1.10       base64enc_0.1-3      pkgconfig_2.0.1     
+    ## [37] htmltools_0.3.6      htmlwidgets_1.2      rlang_0.2.1         
+    ## [40] readxl_1.1.0         rstudioapi_0.7       shiny_1.1.0         
+    ## [43] bindr_0.1.1          zoo_1.8-2            jsonlite_1.5        
+    ## [46] gtools_3.8.1         crosstalk_1.0.0      inline_0.3.15       
+    ## [49] magrittr_1.5         loo_2.0.0            bayesplot_1.6.0     
+    ## [52] Matrix_1.2-14        munsell_0.5.0        abind_1.4-5         
+    ## [55] stringi_1.2.3        yaml_2.1.19          plyr_1.8.4          
+    ## [58] grid_3.5.1           parallel_3.5.1       promises_1.0.1      
+    ## [61] crayon_1.3.4         miniUI_0.1.1.1       lattice_0.20-35     
+    ## [64] haven_1.1.2          hms_0.4.2            knitr_1.20          
+    ## [67] pillar_1.2.3         igraph_1.2.1         markdown_0.8        
+    ## [70] shinystan_2.5.0      codetools_0.2-15     reshape2_1.4.3      
+    ## [73] stats4_3.5.1         rstantools_1.5.0     glue_1.2.0          
+    ## [76] evaluate_0.10.1      modelr_0.1.2         httpuv_1.4.4.2      
+    ## [79] cellranger_1.1.0     gtable_0.2.0         assertthat_0.2.0    
+    ## [82] mime_0.5             xtable_1.8-2         broom_0.4.5         
+    ## [85] coda_0.19-1          later_0.7.3          rsconnect_0.8.8     
+    ## [88] shinythemes_1.1.1    bridgesampling_0.4-0
